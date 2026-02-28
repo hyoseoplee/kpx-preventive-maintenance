@@ -10,7 +10,7 @@ Usage:
 Input:  data/kpx-data/{year}/*.pdf
 Output: results/{year}/maintenance_schedule.csv
 
-Columns: 연료원, 발전기명, 설비용량, 시작일, 시작시간, 종료일, 종료시간, 광역지역, 세부지역
+Columns: 회원사, 연료원, 발전기명, 설비용량, 시작일, 시작시간, 종료일, 종료시간, 광역지역, 세부지역
 """
 
 import sys
@@ -34,28 +34,47 @@ FUEL_MAP = {
     '원자력': 'Nuclear',
 }
 
+# PDF 회원사 → Excel 회원사 이름 매핑 (약칭 사용하는 경우)
+COMPANY_NORMALIZE = {
+    '한국남동발전(주)': '남동',
+    '한국남부발전(주)': '남부',
+    '한국동서발전(주)': '동서',
+    '한국서부발전(주)': '서부',
+    '한국중부발전(주)': '중부',
+    '한국수력원자력(주)': '한수원',
+}
+
+
 # ── Excel master data ──────────────────────────────────────────────────────
 
 def load_gen_master(xlsx_path):
     """
     Load generator master data from Excel.
-    Returns dict: normalized_base_name → (광역지역, 세부지역)
+    Returns dict: (회원사, base_name) → (광역지역, 세부지역)
+    Also returns a fallback dict: base_name → (광역지역, 세부지역) for cases
+    where company matching fails.
     """
     wb = openpyxl.load_workbook(xlsx_path)
     ws = wb.active
 
-    master = {}
+    master_by_company = {}  # (회원사, base_name) → (광역지역, 세부지역)
+    master_by_name = {}     # base_name → (광역지역, 세부지역)
+
     for row in ws.iter_rows(min_row=2, max_row=ws.max_row, values_only=True):
+        company = str(row[0]).strip() if row[0] else ''
         gen_name = str(row[1]).strip() if row[1] else ''
         region = str(row[9]).strip() if row[9] else ''
         detail = str(row[10]).strip() if row[10] else ''
 
-        # Extract base name (e.g., '분당복합 CC1 GT1' → '분당')
         base = extract_base_name(gen_name)
-        if base and base not in master:
-            master[base] = (region, detail)
+        if base:
+            key = (company, base)
+            if key not in master_by_company:
+                master_by_company[key] = (region, detail)
+            if base not in master_by_name:
+                master_by_name[base] = (region, detail)
 
-    return master
+    return master_by_company, master_by_name
 
 
 def extract_base_name(name):
@@ -67,31 +86,45 @@ def extract_base_name(name):
     '신보령화력#1' → '신보령'
     """
     name = name.strip()
-    # Remove known suffixes
     name = re.sub(r'(복합|화력|열병합|그린파워|천연가스)\b.*', '', name)
     name = re.sub(r'\s*(CC\d+\s*)?(GT|ST|#)\d*.*', '', name)
     name = re.sub(r'\s+\d+호기.*', '', name)
     return name.strip()
 
 
-def find_location(gen_name, master):
+def find_location(company, gen_name, master_by_company, master_by_name):
     """
-    Match PDF generator name to Excel master data for location info.
-    gen_name: e.g., '분당GT#1', '영흥#3', 'GS당진GT#1'
+    Match PDF generator to Excel master data for location info.
+    First tries matching by (회원사, base_name), then falls back to base_name only.
     """
     base = extract_base_name(gen_name)
-    if base in master:
-        return master[base]
+
+    # Normalize PDF company name to Excel convention
+    norm_company = COMPANY_NORMALIZE.get(company, company)
+
+    # Try exact (company, base) match
+    key = (norm_company, base)
+    if key in master_by_company:
+        return master_by_company[key]
+
+    # Try all Excel companies with the same base name
+    for (comp, b), loc in master_by_company.items():
+        if b == base:
+            return loc
+
+    # Fallback: base name only
+    if base in master_by_name:
+        return master_by_name[base]
 
     # Try without common prefixes
     for prefix in ['신', 'GS']:
-        if base.startswith(prefix) and base[len(prefix):] in master:
-            return master[base[len(prefix):]]
+        if base.startswith(prefix) and base[len(prefix):] in master_by_name:
+            return master_by_name[base[len(prefix):]]
 
-    # Try matching with master keys containing the base
-    for key in master:
+    # Try partial match
+    for key in master_by_name:
         if base and key.startswith(base):
-            return master[key]
+            return master_by_name[key]
 
     return ('', '')
 
@@ -122,6 +155,7 @@ def extract_table_from_pdf(pdf_path):
                         continue
 
                     try:
+                        company = str(row[0]).strip() if row[0] else ''
                         fuel_type = str(row[1]).strip() if row[1] else None
                         generator = str(row[2]).strip() if row[2] else None
                         capacity_str = str(row[3]).strip().replace(',', '') if row[3] else None
@@ -143,6 +177,7 @@ def extract_table_from_pdf(pdf_path):
                         fuel_mapped = FUEL_MAP.get(fuel_type, fuel_type)
 
                         rows.append({
+                            '회원사': company,
                             '연료원': fuel_mapped,
                             '발전기명': generator,
                             '설비용량': capacity,
@@ -161,11 +196,11 @@ def extract_table_from_pdf(pdf_path):
 def merge_overlapping_periods(records):
     groups = defaultdict(list)
     for r in records:
-        key = (r['연료원'], r['발전기명'], r['설비용량'])
+        key = (r['회원사'], r['연료원'], r['발전기명'], r['설비용량'])
         groups[key].append(r)
 
     merged = []
-    for (fuel, gen, cap), entries in groups.items():
+    for (company, fuel, gen, cap), entries in groups.items():
         entries.sort(key=lambda x: x['_start_dt'])
         merged_intervals = []
         for e in entries:
@@ -199,12 +234,13 @@ def main():
 
     # Load Excel master data
     xlsx_files = glob.glob(os.path.join(REPO_ROOT, 'data', 'HOME_발전설비_발전기별_발전기현황-*.xlsx'))
-    master = {}
+    master_by_company = {}
+    master_by_name = {}
     if xlsx_files:
-        xlsx_path = sorted(xlsx_files)[-1]  # Use latest file
+        xlsx_path = sorted(xlsx_files)[-1]
         print(f"Loading master data: {os.path.basename(xlsx_path)}")
-        master = load_gen_master(xlsx_path)
-        print(f"  {len(master)} base plant names loaded")
+        master_by_company, master_by_name = load_gen_master(xlsx_path)
+        print(f"  {len(master_by_company)} (company, plant) entries, {len(master_by_name)} base names")
     else:
         print("Warning: No Excel master file found, skipping location data")
 
@@ -225,7 +261,7 @@ def main():
     seen = set()
     unique_rows = []
     for r in all_rows:
-        key = (r['연료원'], r['발전기명'], r['설비용량'],
+        key = (r['회원사'], r['연료원'], r['발전기명'], r['설비용량'],
                r['시작일'], r['시작시간'], r['종료일'], r['종료시간'])
         if key not in seen:
             seen.add(key)
@@ -241,15 +277,18 @@ def main():
 
     # Write CSV with location columns
     output_path = os.path.join(output_dir, 'maintenance_schedule.csv')
-    fieldnames = ['연료원', '발전기명', '설비용량', '시작일', '시작시간', '종료일', '종료시간',
+    fieldnames = ['회원사', '연료원', '발전기명', '설비용량', '시작일', '시작시간', '종료일', '종료시간',
                   '광역지역', '세부지역']
 
     with open(output_path, 'w', newline='', encoding='utf-8-sig') as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         for r in merged:
-            region, detail = find_location(r['발전기명'], master) if master else ('', '')
+            region, detail = find_location(
+                r['회원사'], r['발전기명'], master_by_company, master_by_name
+            ) if master_by_company else ('', '')
             writer.writerow({
+                '회원사': r['회원사'],
                 '연료원': r['연료원'],
                 '발전기명': r['발전기명'],
                 '설비용량': r['설비용량'],
