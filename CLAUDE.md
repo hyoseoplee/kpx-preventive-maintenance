@@ -51,10 +51,10 @@ python code/gen_mustoff.py 2025
 
 ### 매핑 (mappings.py)
 - gen_id = mpc.gen (KPG193_ver1_5.m)의 1-based 행 인덱스
-- Coal: 36개 물리발전기 → 36 gen_ids (10개 bus)
-- Nuclear: 17개 물리발전기 → 12 gen_ids (4개 bus)
-- LNG: 87+개 물리발전기 → 43 gen_ids (CC 블록 단위 매핑)
-- 상세 매핑 테이블: [docs/manual.md](docs/manual.md#coal-매핑-36개-물리발전기--36-gen_ids) 참조
+- Coal: 36개 물리발전기 → 36 gen_ids (10개 bus), 500~1,050 MW
+- Nuclear: 17개 물리발전기 → 12 gen_ids (4개 bus), 650~1,400 MW
+- LNG: 87+개 물리발전기 → 43 gen_ids (CC 블록 단위 매핑), 115~2,606 MW (블록 합산)
+- 상세 매핑 테이블 (발전기별 용량 포함): [docs/manual.md](docs/manual.md) 참조
 
 ### 용량 불일치로 제외된 발전기
 - Coal: 고성#2 (1040MW vs gen59 Pmax=200MW), 동해#1/#2 (200MW vs gen65 Pmax=730MW)
