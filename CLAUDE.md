@@ -54,10 +54,14 @@ python code/gen_mustoff.py 2025
 - Coal: 36개 물리발전기 → 36 gen_ids (10개 bus)
 - Nuclear: 17개 물리발전기 → 12 gen_ids (4개 bus)
 - LNG: 87+개 물리발전기 → 43 gen_ids (CC 블록 단위 매핑)
+- 상세 매핑 테이블: [docs/manual.md](docs/manual.md#coal-매핑-36개-물리발전기--36-gen_ids) 참조
 
 ### 용량 불일치로 제외된 발전기
 - Coal: 고성#2 (1040MW vs gen59 Pmax=200MW), 동해#1/#2 (200MW vs gen65 Pmax=730MW)
 - LNG: 인천공항GT#1/#2/ST#1 (127MW total vs gen19 Pmax=880MW)
+
+## 문서
+- [docs/manual.md](docs/manual.md) - 상세 매뉴얼 (매핑 테이블, 변환 규칙, 트러블슈팅 등)
 
 ## 새 연도 데이터 추가 시
 1. `data/kpx-data/{year}/`에 PDF 파일 배치
