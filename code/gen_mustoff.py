@@ -62,7 +62,11 @@ def generate_mustoff(year, fuel_type, mapping, records):
         start_d = date.fromisoformat(r['시작일'].strip())
         end_d = date.fromisoformat(r['종료일'].strip())
 
-        # Convert to day numbers
+        # Skip if entire period ends before the target year
+        if end_d < base_date:
+            continue
+
+        # Convert to day numbers (clamp start to day 1 if before target year)
         if start_d < base_date:
             off_start_day = 1
             off_start_time = 1
@@ -70,16 +74,8 @@ def generate_mustoff(year, fuel_type, mapping, records):
             off_start_day = (start_d - base_date).days + 1
             off_start_time = parse_start_time(r['시작시간'])
 
-        if end_d < base_date:
-            off_end_day = 1
-            off_end_time = 1
-        else:
-            off_end_day = (end_d - base_date).days + 1
-            off_end_time = parse_end_time(r['종료시간'])
-
-        # Skip if entire period is before the target year
-        if off_end_day < 1:
-            continue
+        off_end_day = (end_d - base_date).days + 1
+        off_end_time = parse_end_time(r['종료시간'])
 
         rows.append((gen_id, off_start_day, off_start_time, off_end_day, off_end_time))
 

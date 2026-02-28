@@ -9,7 +9,7 @@ KPX(한국전력거래소) 주간 예방정비계획 PDF를 파싱하여 KPG193 
 │   ├── HOME_발전설비_발전기별_발전기현황-*.xlsx   # 발전기 마스터 (위치/용량)
 │   └── kpx-data/
 │       ├── 2022/   # 주간 정비계획 PDF
-│       └── 2025/
+│       └── 2025/   # 2024년 12월 4주차 포함 (2025년으로 이어지는 정비)
 ├── code/
 │   ├── parse_pdf.py      # Step 1: PDF → maintenance_schedule.csv
 │   ├── gen_mustoff.py    # Step 2: CSV → mustoff files
@@ -46,7 +46,8 @@ python code/gen_mustoff.py 2025
 - Day 1 = 해당 연도 1월 1일
 - start_time: max(hour, 1)
 - end_time: minutes > 0이면 hour+1, 아니면 hour (hour=0이면 24)
-- 해당 연도 이전 날짜는 day=1, time=1로 클램프
+- 해당 연도 이전에 끝나는 정비는 제외
+- 해당 연도 이전에 시작하여 해당 연도까지 이어지는 정비는 start를 day=1, time=1로 클램프
 
 ### 매핑 (mappings.py)
 - gen_id = mpc.gen (KPG193_ver1_5.m)의 1-based 행 인덱스
@@ -60,6 +61,7 @@ python code/gen_mustoff.py 2025
 
 ## 새 연도 데이터 추가 시
 1. `data/kpx-data/{year}/`에 PDF 파일 배치
+   - 전년도 말 PDF 중 해당 연도까지 이어지는 정비가 포함된 파일도 함께 배치
 2. `python code/parse_pdf.py {year}` 실행
 3. `python code/gen_mustoff.py {year}` 실행
 4. `results/{year}/mustoff/` 확인
